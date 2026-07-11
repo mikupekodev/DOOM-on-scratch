@@ -1,0 +1,786 @@
+<!DOCTYPE html>
+<html lang="ja">
+<head>
+<meta charset="UTF-8">
+<title>GIF → Scratch Video Converter</title>
+<style>
+@import url('https://fonts.googleapis.com/css2?family=Share+Tech+Mono&family=VT323:wght@400&display=swap');
+
+:root {
+  --bg: #07050f;
+  --panel: #0e0b1a;
+  --border: #1e1a30;
+  --purple: #a259ff;
+  --purple-dim: #5a2fa0;
+  --purple-dark: #0d0820;
+  --amber: #ffb300;
+  --cyan: #00e5ff;
+  --text: #d4b8ff;
+  --scanline: rgba(0,0,0,0.2);
+}
+
+* { box-sizing: border-box; margin: 0; padding: 0; }
+
+body {
+  background: var(--bg);
+  color: var(--purple);
+  font-family: 'Share Tech Mono', monospace;
+  min-height: 100vh;
+  padding: 24px;
+  overflow-x: hidden;
+}
+
+body::before {
+  content: '';
+  position: fixed; inset: 0;
+  background: repeating-linear-gradient(0deg, transparent, transparent 2px, var(--scanline) 2px, var(--scanline) 4px);
+  pointer-events: none;
+  z-index: 999;
+}
+
+h1 {
+  font-family: 'VT323', monospace;
+  font-size: 2.4rem;
+  letter-spacing: 4px;
+  text-shadow: 0 0 20px var(--purple), 0 0 40px var(--purple-dim);
+  margin-bottom: 4px;
+}
+
+.subtitle {
+  font-size: 0.72rem;
+  color: var(--purple-dim);
+  letter-spacing: 2px;
+  margin-bottom: 24px;
+}
+
+.layout {
+  display: grid;
+  grid-template-columns: 340px 1fr;
+  gap: 16px;
+  max-width: 1200px;
+}
+
+.panel {
+  background: var(--panel);
+  border: 1px solid var(--border);
+  padding: 14px;
+  position: relative;
+}
+
+.panel::before {
+  content: attr(data-label);
+  position: absolute;
+  top: -9px; left: 10px;
+  background: var(--panel);
+  padding: 0 6px;
+  font-size: 0.62rem;
+  letter-spacing: 3px;
+  color: var(--purple-dim);
+}
+
+/* Drop zone */
+#dropzone {
+  border: 2px dashed var(--purple-dim);
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  justify-content: center;
+  height: 180px;
+  cursor: pointer;
+  background: var(--purple-dark);
+  gap: 8px;
+  transition: all 0.15s;
+}
+#dropzone:hover, #dropzone.dragover {
+  border-color: var(--purple);
+  background: #130c28;
+  box-shadow: inset 0 0 30px rgba(162,89,255,0.06);
+}
+#dropzone .icon { font-size: 2.5rem; filter: drop-shadow(0 0 8px var(--purple)); }
+#dropzone .hint { font-size: 0.75rem; color: var(--purple-dim); letter-spacing: 1px; text-align: center; }
+#fileInput { display: none; }
+
+/* Controls */
+.controls { margin-top: 12px; display: flex; flex-direction: column; gap: 8px; }
+
+.ctrl-row {
+  display: flex; align-items: center; gap: 8px; flex-wrap: wrap;
+}
+
+label {
+  font-size: 0.68rem; color: var(--purple-dim); letter-spacing: 1px; min-width: 100px;
+}
+
+select, input[type=number] {
+  background: #080510;
+  border: 1px solid var(--purple-dim);
+  color: var(--purple);
+  font-family: 'Share Tech Mono', monospace;
+  font-size: 0.72rem;
+  padding: 3px 6px;
+  flex: 1;
+}
+
+input[type=range] { flex: 1; accent-color: var(--purple); height: 3px; }
+.val { font-family: 'VT323', monospace; font-size: 1.1rem; color: var(--amber); min-width: 40px; text-align: right; }
+
+button {
+  background: transparent;
+  border: 1px solid var(--purple);
+  color: var(--purple);
+  font-family: 'Share Tech Mono', monospace;
+  font-size: 0.72rem;
+  letter-spacing: 2px;
+  padding: 7px 14px;
+  cursor: pointer;
+  transition: all 0.15s;
+  text-transform: uppercase;
+}
+button:hover { background: var(--purple); color: #000; box-shadow: 0 0 16px var(--purple); }
+button:disabled { border-color: var(--border); color: #2a1a40; cursor: not-allowed; }
+button:disabled:hover { background: transparent; color: #2a1a40; box-shadow: none; }
+
+/* Right column */
+.right-col { display: flex; flex-direction: column; gap: 16px; }
+
+/* Preview strip */
+#previewStrip {
+  display: flex;
+  gap: 4px;
+  overflow-x: auto;
+  padding: 6px 0;
+  min-height: 60px;
+  align-items: center;
+}
+#previewStrip canvas {
+  flex-shrink: 0;
+  image-rendering: pixelated;
+  border: 1px solid var(--border);
+  height: 50px;
+  cursor: pointer;
+  transition: border-color 0.1s;
+}
+#previewStrip canvas.active { border-color: var(--purple); box-shadow: 0 0 8px var(--purple); }
+
+/* Main preview */
+#mainPreview {
+  image-rendering: pixelated;
+  width: 100%;
+  max-height: 300px;
+  object-fit: contain;
+  display: block;
+  background: #000;
+  border: 1px solid var(--border);
+}
+
+/* Progress */
+.progress-wrap { height: 3px; background: var(--border); overflow: hidden; margin-top: 8px; }
+.progress-bar { height: 100%; background: var(--purple); width: 0%; transition: width 0.1s; box-shadow: 0 0 8px var(--purple); }
+
+/* Stats */
+.stat-bar {
+  display: flex; flex-wrap: wrap; gap: 10px;
+  padding: 10px; background: #050310; border: 1px solid var(--border);
+  font-size: 0.65rem; color: var(--purple-dim);
+}
+.stat { display: flex; flex-direction: column; gap: 1px; }
+.stat-val { font-family: 'VT323', monospace; font-size: 1.05rem; color: var(--amber); }
+
+/* Output */
+#outputText {
+  background: #040210;
+  border: 1px solid var(--border);
+  color: #c8a0ff;
+  font-family: 'Share Tech Mono', monospace;
+  font-size: 0.68rem;
+  width: 100%;
+  height: 160px;
+  resize: vertical;
+  padding: 10px;
+  line-height: 1.6;
+  outline: none;
+}
+#outputText:focus { border-color: var(--purple-dim); }
+
+.btn-row { display: flex; gap: 8px; flex-wrap: wrap; margin-top: 8px; }
+
+.err { font-size: 0.68rem; color: var(--amber); margin-top: 6px; min-height: 1em; letter-spacing: 1px; }
+
+@media (max-width: 800px) {
+  .layout { grid-template-columns: 1fr; }
+}
+</style>
+</head>
+<body>
+
+<h1>▓ GIF → SCRATCH VIDEO</h1>
+<p class="subtitle">GIF → 320×200 DIFF STREAM → SCRATCH OS FORMAT</p>
+
+<div class="layout">
+  <!-- Left: controls -->
+  <div>
+    <div class="panel" data-label="[ INPUT ]">
+      <div id="dropzone">
+        <div class="icon">🎞</div>
+        <div class="hint">DROP GIF HERE<br>or CLICK TO SELECT</div>
+      </div>
+      <input type="file" id="fileInput" accept="image/gif">
+    </div>
+
+    <div class="panel" style="margin-top:14px;" data-label="[ SETTINGS ]">
+      <div class="controls">
+        <div class="ctrl-row">
+          <label>COLOR MODE</label>
+          <select id="colorMode">
+            <option value="doom">8BIT DOOM PALETTE</option>
+            <option value="gray">8BIT GRAYSCALE</option>
+          </select>
+        </div>
+        <div class="ctrl-row">
+          <label>THRESHOLD</label>
+          <input type="range" id="threshold" min="0" max="255" value="128">
+          <span class="val" id="threshVal">128</span>
+        </div>
+        <div class="ctrl-row">
+          <label>FRAME SKIP</label>
+          <select id="frameSkip">
+            <option value="1">EVERY FRAME</option>
+            <option value="2">1/2 FRAMES</option>
+            <option value="3">1/3 FRAMES</option>
+            <option value="5">1/5 FRAMES</option>
+          </select>
+        </div>
+        <div class="ctrl-row">
+          <label>INVERT</label>
+          <select id="invert">
+            <option value="0">OFF</option>
+            <option value="1">ON</option>
+          </select>
+        </div>
+        <div class="ctrl-row" style="margin-top:6px; flex-wrap:wrap; gap:6px;">
+          <button id="convertBtn" disabled>▶ CONVERT</button>
+          <button id="playBtn" disabled>▷ PREVIEW</button>
+          <span class="val" id="progressPct" style="font-size:1rem;"></span>
+        </div>
+        <div class="err" id="errMsg"></div>
+      </div>
+    </div>
+  </div>
+
+  <!-- Right -->
+  <div class="right-col">
+    <div class="panel" data-label="[ FRAME PREVIEW ]">
+      <div id="previewStrip"></div>
+      <canvas id="mainPreview" width="320" height="200"></canvas>
+      <div class="progress-wrap"><div class="progress-bar" id="progressBar"></div></div>
+    </div>
+
+    <div class="panel" data-label="[ STATS ]">
+      <div class="stat-bar">
+        <div class="stat"><div class="stat-val" id="statFrames">—</div><div>FRAMES</div></div>
+        <div class="stat"><div class="stat-val" id="statTotal">—</div><div>TOTAL ENTRIES</div></div>
+        <div class="stat"><div class="stat-val" id="statAvgDiff">—</div><div>AVG DIFF/FRAME</div></div>
+        <div class="stat"><div class="stat-val" id="statMaxDiff">—</div><div>MAX DIFF/FRAME</div></div>
+        <div class="stat"><div class="stat-val" id="statRatio">—</div><div>COMPRESSION</div></div>
+        <div class="stat"><div class="stat-val" id="statFps">—</div><div>SRC FPS</div></div>
+      </div>
+    </div>
+
+    <div class="panel" data-label="[ OUTPUT — FORMAT: 0,N,addr,val,... ]">
+      <textarea id="outputText" readonly placeholder="// 変換後データ&#10;// フォーマット: 0(区切り), N(変化数), addr(1-64000), value(1-256), ..."></textarea>
+      <div class="btn-row">
+        <button id="copyBtn" disabled>⎘ COPY</button>
+        <button id="dlBtn" disabled>↓ DOWNLOAD .TXT</button>
+      </div>
+    </div>
+  </div>
+</div>
+
+<script>
+// ── DOOM Palette ──────────────────────────────────────────────────────────────
+const DOOM_PALETTE = [[0,0,0],[31,23,11],[23,15,7],[75,75,75],[255,255,255],[27,27,27],[19,19,19],[11,11,11],[7,7,7],[47,55,31],[35,43,15],[23,31,7],[15,23,0],[79,59,43],[71,51,35],[63,43,27],[255,183,183],[247,171,171],[243,163,163],[235,151,151],[231,143,143],[223,135,135],[219,123,123],[211,115,115],[203,107,107],[199,99,99],[191,91,91],[187,87,87],[179,79,79],[175,71,71],[167,63,63],[163,59,59],[155,51,51],[151,47,47],[143,43,43],[139,35,35],[131,31,31],[127,27,27],[119,23,23],[115,19,19],[107,15,15],[103,11,11],[95,7,7],[91,7,7],[83,7,7],[79,0,0],[71,0,0],[67,0,0],[255,235,223],[255,227,211],[255,219,199],[255,211,187],[255,207,179],[255,199,167],[255,191,155],[255,187,147],[255,179,131],[247,171,123],[239,163,115],[231,155,107],[223,147,99],[215,139,91],[207,131,83],[203,127,79],[191,123,75],[179,115,71],[171,111,67],[163,107,63],[155,99,59],[143,95,55],[135,87,51],[127,83,47],[119,79,43],[107,71,39],[95,67,35],[83,63,31],[75,55,27],[63,47,23],[51,43,19],[43,35,15],[239,239,239],[231,231,231],[223,223,223],[219,219,219],[211,211,211],[203,203,203],[199,199,199],[191,191,191],[183,183,183],[179,179,179],[171,171,171],[167,167,167],[159,159,159],[151,151,151],[147,147,147],[139,139,139],[131,131,131],[127,127,127],[119,119,119],[111,111,111],[107,107,107],[99,99,99],[91,91,91],[87,87,87],[79,79,79],[71,71,71],[67,67,67],[59,59,59],[55,55,55],[47,47,47],[39,39,39],[35,35,35],[119,255,111],[111,239,103],[103,223,95],[95,207,87],[91,191,79],[83,175,71],[75,159,63],[67,147,55],[63,131,47],[55,115,43],[47,99,35],[39,83,27],[31,67,23],[23,51,15],[19,35,11],[11,23,7],[191,167,143],[183,159,135],[175,151,127],[167,143,119],[159,135,111],[155,127,107],[147,123,99],[139,115,91],[131,107,87],[123,99,79],[119,95,75],[111,87,67],[103,83,63],[95,75,55],[87,67,51],[83,63,47],[159,131,99],[143,119,83],[131,107,75],[119,95,63],[103,83,51],[91,71,43],[79,59,35],[67,51,27],[123,127,99],[111,115,87],[103,107,79],[91,99,71],[83,87,59],[71,79,51],[63,71,43],[55,63,39],[255,255,115],[235,219,87],[215,187,67],[195,155,47],[175,123,31],[155,91,19],[135,67,7],[115,43,0],[255,255,255],[255,219,219],[255,187,187],[255,155,155],[255,123,123],[255,95,95],[255,63,63],[255,31,31],[255,0,0],[239,0,0],[227,0,0],[215,0,0],[203,0,0],[191,0,0],[179,0,0],[167,0,0],[155,0,0],[139,0,0],[127,0,0],[115,0,0],[103,0,0],[91,0,0],[79,0,0],[67,0,0],[231,231,255],[199,199,255],[171,171,255],[143,143,255],[115,115,255],[83,83,255],[55,55,255],[27,27,255],[0,0,255],[0,0,227],[0,0,203],[0,0,179],[0,0,155],[0,0,131],[0,0,107],[0,0,83],[255,255,255],[255,235,219],[255,215,187],[255,199,155],[255,179,123],[255,163,91],[255,143,59],[255,127,27],[243,115,23],[235,111,15],[223,103,15],[215,95,11],[203,87,7],[195,79,0],[183,71,0],[175,67,0],[255,255,255],[255,255,215],[255,255,179],[255,255,143],[255,255,107],[255,255,71],[255,255,35],[255,255,0],[167,63,0],[159,55,0],[147,47,0],[135,35,0],[79,59,39],[67,47,27],[55,35,19],[47,27,11],[0,0,83],[0,0,71],[0,0,59],[0,0,47],[0,0,35],[0,0,23],[0,0,11],[0,0,0],[255,159,67],[255,231,75],[255,123,255],[255,0,255],[207,0,207],[159,0,155],[111,0,107],[167,107,107]];
+
+// Nearest DOOM palette color
+function nearestDoom(r, g, b) {
+  let best = 0, bestD = Infinity;
+  for (let i = 0; i < 256; i++) {
+    const dr = r - DOOM_PALETTE[i][0], dg = g - DOOM_PALETTE[i][1], db = b - DOOM_PALETTE[i][2];
+    const d = dr*dr + dg*dg + db*db;
+    if (d < bestD) { bestD = d; best = i; }
+  }
+  return best;
+}
+
+// ── GIF Parser (pure JS, no library) ─────────────────────────────────────────
+// Returns array of {pixels: Uint8Array(w*h*4 RGBA), delay: ms}
+function parseGIF(buffer) {
+  const data = new Uint8Array(buffer);
+  let pos = 0;
+
+  const readU16 = () => { const v = data[pos] | (data[pos+1] << 8); pos += 2; return v; };
+  const readU8  = () => data[pos++];
+
+  // Header
+  pos = 6;
+  const canvasW = readU16(), canvasH = readU16();
+  const packed = readU8();
+  const hasGCT = (packed >> 7) & 1;
+  const gctSize = 1 << ((packed & 7) + 1);
+  readU8(); // bg color
+  readU8(); // aspect ratio
+
+  let globalCT = null;
+  if (hasGCT) {
+    globalCT = new Uint8Array(data.buffer, pos, gctSize * 3);
+    pos += gctSize * 3;
+  }
+
+  const frames = [];
+  let gce = { delay: 100, transparentIdx: -1, disposal: 0 };
+  let canvas = new Uint8Array(canvasW * canvasH * 4);
+  // fill canvas black opaque
+  for (let i = 0; i < canvasW * canvasH; i++) { canvas[i*4+3] = 255; }
+
+  while (pos < data.length) {
+    const sentinel = readU8();
+    if (sentinel === 0x3B) break; // trailer
+
+    if (sentinel === 0x21) { // extension
+      const label = readU8();
+      if (label === 0xF9) { // GCE
+        readU8(); // block size = 4
+        const p = readU8();
+        gce.disposal = (p >> 2) & 7;
+        gce.delay = readU16() * 10; // cs → ms
+        const ti = readU8();
+        gce.transparentIdx = (p & 1) ? ti : -1;
+        readU8(); // terminator
+      } else {
+        // skip sub-blocks
+        let bsize;
+        while ((bsize = readU8()) !== 0) pos += bsize;
+      }
+    } else if (sentinel === 0x2C) { // image descriptor
+      const left = readU16(), top = readU16(), w = readU16(), h = readU16();
+      const imgPacked = readU8();
+      const hasLCT = (imgPacked >> 7) & 1;
+      const interlaced = (imgPacked >> 6) & 1;
+      const lctSize = 1 << ((imgPacked & 7) + 1);
+
+      let ct = globalCT;
+      if (hasLCT) {
+        ct = new Uint8Array(data.buffer, pos, lctSize * 3);
+        pos += lctSize * 3;
+      }
+
+      // LZW decompress
+      const minCode = readU8();
+      const pixels = lzwDecode(data, pos, minCode, w * h);
+      // advance past sub-blocks
+      let bsize;
+      while ((bsize = readU8()) !== 0) pos += bsize;
+
+      // Deinterlace if needed
+      let ordered = pixels;
+      if (interlaced) {
+        ordered = new Uint8Array(w * h);
+        const rows = [0, 4, 2, 1];
+        const steps = [8, 8, 4, 2];
+        let src = 0;
+        for (let pass = 0; pass < 4; pass++) {
+          for (let y = rows[pass]; y < h; y += steps[pass]) {
+            ordered.set(pixels.subarray(src, src + w), y * w);
+            src += w;
+          }
+        }
+      }
+
+      // Composite onto canvas
+      const prevCanvas = new Uint8Array(canvas);
+      for (let py = 0; py < h; py++) {
+        for (let px = 0; px < w; px++) {
+          const idx = ordered[py * w + px];
+          if (idx === gce.transparentIdx) continue;
+          const cx = left + px, cy = top + py;
+          if (cx >= canvasW || cy >= canvasH) continue;
+          const ci = (cy * canvasW + cx) * 4;
+          canvas[ci]   = ct[idx*3];
+          canvas[ci+1] = ct[idx*3+1];
+          canvas[ci+2] = ct[idx*3+2];
+          canvas[ci+3] = 255;
+        }
+      }
+
+      frames.push({ pixels: new Uint8Array(canvas), delay: gce.delay || 100 });
+
+      // Disposal
+      if (gce.disposal === 2) {
+        // restore to background
+        for (let py = 0; py < h; py++) {
+          for (let px = 0; px < w; px++) {
+            const cx = left + px, cy = top + py;
+            if (cx >= canvasW || cy >= canvasH) continue;
+            const ci = (cy * canvasW + cx) * 4;
+            canvas[ci] = canvas[ci+1] = canvas[ci+2] = 0; canvas[ci+3] = 255;
+          }
+        }
+      } else if (gce.disposal === 3) {
+        canvas = prevCanvas;
+      }
+
+      gce = { delay: 100, transparentIdx: -1, disposal: 0 };
+    }
+  }
+  return { frames, width: canvasW, height: canvasH };
+}
+
+// LZW decoder
+function lzwDecode(data, pos, minCode, pixelCount) {
+  const clearCode = 1 << minCode;
+  const eoi = clearCode + 1;
+
+  // Collect sub-blocks
+  const compressed = [];
+  let p = pos;
+  let bsize;
+  while ((bsize = data[p++]) !== 0) {
+    for (let i = 0; i < bsize; i++) compressed.push(data[p++]);
+  }
+
+  // Bit stream
+  let bitBuf = 0, bitCount = 0, bytePos = 0;
+  function readBits(n) {
+    while (bitCount < n) { bitBuf |= compressed[bytePos++] << bitCount; bitCount += 8; }
+    const val = bitBuf & ((1 << n) - 1);
+    bitBuf >>= n; bitCount -= n;
+    return val;
+  }
+
+  const output = new Uint8Array(pixelCount);
+  let outPos = 0;
+  let codeSize = minCode + 1;
+  let nextCode = eoi + 1;
+  const table = [];
+  for (let i = 0; i < clearCode; i++) table[i] = [i];
+  table[clearCode] = []; table[eoi] = [];
+
+  let prevCode = -1;
+  while (outPos < pixelCount) {
+    const code = readBits(codeSize);
+    if (code === clearCode) {
+      codeSize = minCode + 1;
+      nextCode = eoi + 1;
+      table.length = eoi + 1;
+      prevCode = -1;
+      continue;
+    }
+    if (code === eoi) break;
+
+    let entry;
+    if (code < nextCode) {
+      entry = table[code];
+    } else if (code === nextCode && prevCode !== -1) {
+      entry = [...table[prevCode], table[prevCode][0]];
+    } else break;
+
+    for (let i = 0; i < entry.length && outPos < pixelCount; i++) output[outPos++] = entry[i];
+
+    if (prevCode !== -1 && nextCode < 4096) {
+      table[nextCode++] = [...table[prevCode], entry[0]];
+      if (nextCode === (1 << codeSize) && codeSize < 12) codeSize++;
+    }
+    prevCode = code;
+  }
+  return output;
+}
+
+// ── App ───────────────────────────────────────────────────────────────────────
+const W = 320, H = 200;
+const fileInput   = document.getElementById('fileInput');
+const dropzone    = document.getElementById('dropzone');
+const convertBtn  = document.getElementById('convertBtn');
+const playBtn     = document.getElementById('playBtn');
+const copyBtn     = document.getElementById('copyBtn');
+const dlBtn       = document.getElementById('dlBtn');
+const colorMode   = document.getElementById('colorMode');
+const threshSlider= document.getElementById('threshold');
+const threshVal   = document.getElementById('threshVal');
+const frameSkip   = document.getElementById('frameSkip');
+const invertSel   = document.getElementById('invert');
+const outputText  = document.getElementById('outputText');
+const mainPreview = document.getElementById('mainPreview');
+const mainCtx     = mainPreview.getContext('2d');
+const progressBar = document.getElementById('progressBar');
+const previewStrip= document.getElementById('previewStrip');
+const errMsg      = document.getElementById('errMsg');
+
+threshSlider.addEventListener('input', () => threshVal.textContent = threshSlider.value);
+
+let gifData = null; // { frames, width, height }
+let outputLines = null;
+let playInterval = null;
+
+// Drop / file
+dropzone.addEventListener('click', () => fileInput.click());
+dropzone.addEventListener('dragover', e => { e.preventDefault(); dropzone.classList.add('dragover'); });
+dropzone.addEventListener('dragleave', () => dropzone.classList.remove('dragover'));
+dropzone.addEventListener('drop', e => {
+  e.preventDefault(); dropzone.classList.remove('dragover');
+  if (e.dataTransfer.files[0]) loadFile(e.dataTransfer.files[0]);
+});
+fileInput.addEventListener('change', () => { if (fileInput.files[0]) loadFile(fileInput.files[0]); });
+
+function loadFile(file) {
+  errMsg.textContent = '';
+  if (!file.type.includes('gif') && !file.name.endsWith('.gif')) {
+    errMsg.textContent = '⚠ GIFファイルを選択してください';
+    return;
+  }
+  const reader = new FileReader();
+  reader.onload = e => {
+    try {
+      gifData = parseGIF(e.target.result);
+      if (gifData.frames.length === 0) { errMsg.textContent = '⚠ フレームが見つかりません'; return; }
+      dropzone.querySelector('.hint').textContent = `${file.name}  ${gifData.frames.length}frames  ${gifData.width}×${gifData.height}`;
+      buildStrip();
+      convertBtn.disabled = false;
+    } catch(ex) {
+      errMsg.textContent = '⚠ GIF解析エラー: ' + ex.message;
+      console.error(ex);
+    }
+  };
+  reader.readAsArrayBuffer(file);
+}
+
+function buildStrip() {
+  previewStrip.innerHTML = '';
+  const skip = parseInt(frameSkip.value);
+  gifData.frames.forEach((f, i) => {
+    if (i % skip !== 0) return;
+    // wrap canvas in a labeled container
+    const wrap = document.createElement('div');
+    wrap.style.cssText = 'position:relative;flex-shrink:0;cursor:pointer;';
+    const c = document.createElement('canvas');
+    c.width = gifData.width; c.height = gifData.height;
+    c.style.cssText = 'display:block;image-rendering:pixelated;height:50px;border:1px solid var(--border);';
+    const cx = c.getContext('2d');
+    const id = cx.createImageData(gifData.width, gifData.height);
+    id.data.set(f.pixels);
+    cx.putImageData(id, 0, 0);
+    const lbl = document.createElement('span');
+    lbl.textContent = 'F_' + String(i).padStart(3,'0');
+    lbl.style.cssText = 'position:absolute;bottom:2px;left:2px;font-size:9px;font-family:Share Tech Mono,monospace;color:#a259ff;text-shadow:0 0 4px #000,0 0 4px #000;pointer-events:none;letter-spacing:1px;';
+    wrap.appendChild(c);
+    wrap.appendChild(lbl);
+    wrap.addEventListener('click', () => {
+      previewStrip.querySelectorAll('canvas').forEach(x => x.classList.remove('active'));
+      c.classList.add('active');
+      showFrame(i);
+    });
+    previewStrip.appendChild(wrap);
+  });
+  showFrame(0);
+}
+
+function showFrame(i) {
+  const f = gifData.frames[i];
+  const off = document.createElement('canvas');
+  off.width = gifData.width; off.height = gifData.height;
+  const oc = off.getContext('2d');
+  const id = oc.createImageData(gifData.width, gifData.height);
+  id.data.set(f.pixels);
+  oc.putImageData(id, 0, 0);
+  mainCtx.clearRect(0, 0, W, H);
+  mainCtx.drawImage(off, 0, 0, W, H);
+}
+
+// ── Convert ───────────────────────────────────────────────────────────────────
+function pixelToValue(r, g, b) {
+  const mode = colorMode.value;
+  const doInvert = invertSel.value === '1';
+  if (mode === 'doom') {
+    let idx = nearestDoom(r, g, b);
+    if (doInvert) idx = 255 - idx;
+    return idx + 1; // 1-indexed
+  } else {
+    // grayscale
+    let v = Math.round(0.299*r + 0.587*g + 0.114*b);
+    if (doInvert) v = 255 - v;
+    return v + 1; // 1-indexed
+  }
+}
+
+convertBtn.addEventListener('click', () => {
+  if (!gifData) return;
+  errMsg.textContent = '';
+  convertBtn.disabled = true;
+  progressBar.style.width = '0%';
+  document.getElementById('progressPct').textContent = '0%';
+  outputText.value = '';
+  outputLines = null;
+
+  const skip = parseInt(frameSkip.value);
+  const frames = gifData.frames.filter((_, i) => i % skip === 0);
+  const srcW = gifData.width, srcH = gifData.height;
+  const mode = colorMode.value;
+  const doInvert = invertSel.value === '1';
+
+  // offscreen for scaling
+  const off = document.createElement('canvas');
+  off.width = W; off.height = H;
+  const oc = off.getContext('2d');
+  // reuse tmp canvas
+  const tmpC = document.createElement('canvas');
+  tmpC.width = srcW; tmpC.height = srcH;
+  const tmpCtx = tmpC.getContext('2d');
+
+  // Accumulate output as array of Uint8Array chunks → concat at end
+  const chunks = [];
+  let totalEntries = 0;
+  let prevValues = null;
+  let totalDiff = 0, maxDiff = 0;
+  // Preview: first 200 lines
+  const previewLines = [];
+
+  // Encode number + newline into bytes
+  const enc = new TextEncoder();
+  function numBytes(n) { return enc.encode(n + '\n'); }
+
+  let fi = 0;
+  function processNext() {
+    // Process BATCH_SIZE frames per tick to balance UI responsiveness vs speed
+    const BATCH = 5;
+    for (let b = 0; b < BATCH && fi < frames.length; b++, fi++) {
+      const frame = frames[fi];
+      const srcImg = tmpCtx.createImageData(srcW, srcH);
+      srcImg.data.set(frame.pixels);
+      tmpCtx.putImageData(srcImg, 0, 0);
+      oc.drawImage(tmpC, 0, 0, W, H);
+      const imgData = oc.getImageData(0, 0, W, H).data;
+
+      // Convert pixels
+      const values = new Uint16Array(W * H);
+      if (mode === 'doom') {
+        for (let i = 0; i < W * H; i++) {
+          let idx = nearestDoom(imgData[i*4], imgData[i*4+1], imgData[i*4+2]);
+          if (doInvert) idx = 255 - idx;
+          values[i] = idx + 1;
+        }
+      } else {
+        for (let i = 0; i < W * H; i++) {
+          let v = Math.round(0.299*imgData[i*4] + 0.587*imgData[i*4+1] + 0.114*imgData[i*4+2]);
+          if (doInvert) v = 255 - v;
+          values[i] = v + 1;
+        }
+      }
+
+      // Diff
+      const diffAddrs = [];
+      const diffVals  = [];
+      if (prevValues === null) {
+        for (let i = 0; i < W * H; i++) { diffAddrs.push(i+1); diffVals.push(values[i]); }
+      } else {
+        for (let i = 0; i < W * H; i++) {
+          if (values[i] !== prevValues[i]) { diffAddrs.push(i+1); diffVals.push(values[i]); }
+        }
+      }
+      prevValues = values;
+
+      const N = diffAddrs.length;
+      totalDiff += N;
+      if (N > maxDiff) maxDiff = N;
+      // entries: 0, N, (addr,val)*N  = 2 + 2*N
+      totalEntries += 2 + 2 * N;
+
+      // Build chunk string (addr=HEX, value=HEX 2桁大文字)
+      let str = '0\n' + N + '\n';
+      for (let i = 0; i < N; i++) str += diffAddrs[i].toString(16).toUpperCase() + '\n' + diffVals[i].toString(16).toUpperCase().padStart(2,'0') + '\n';
+      chunks.push(str);
+
+      // Preview
+      if (previewLines.length < 200) {
+        const plines = str.split('\n');
+        for (const l of plines) {
+          if (previewLines.length >= 200) break;
+          if (l !== '') previewLines.push(l);
+        }
+      }
+    }
+
+    const pct = Math.round(fi / frames.length * 100);
+    progressBar.style.width = pct + '%';
+    document.getElementById('progressPct').textContent = pct + '%';
+
+    if (fi < frames.length) {
+      setTimeout(processNext, 0);
+      return;
+    }
+
+    // Done — build final blob
+    const blob = new Blob(chunks, { type: 'text/plain' });
+    outputLines = blob; // store blob for download
+
+    const avgDiff = Math.round(totalDiff / frames.length);
+    const rawTotal = frames.length * W * H;
+    document.getElementById('statFrames').textContent = frames.length.toLocaleString();
+    document.getElementById('statTotal').textContent = totalEntries.toLocaleString();
+    document.getElementById('statAvgDiff').textContent = avgDiff.toLocaleString();
+    document.getElementById('statMaxDiff').textContent = maxDiff.toLocaleString();
+    document.getElementById('statRatio').textContent = ((1 - totalEntries / (rawTotal * 2)) * 100).toFixed(1) + '%';
+    document.getElementById('statFps').textContent =
+      frames.length > 1 ? (1000 / (gifData.frames[Math.min(skip, gifData.frames.length-1)].delay || 100) * skip).toFixed(1) : '—';
+
+    progressBar.style.width = '100%';
+    document.getElementById('progressPct').textContent = '100%';
+    outputText.value = previewLines.join('\n') + '\n... (先頭200行のみ表示)';
+    copyBtn.disabled = true; // too large to copy reliably
+    dlBtn.disabled = false;
+    playBtn.disabled = false;
+    convertBtn.disabled = false;
+  }
+  processNext();
+});
+
+// ── Preview playback ──────────────────────────────────────────────────────────
+playBtn.addEventListener('click', () => {
+  if (playInterval) {
+    clearInterval(playInterval);
+    playInterval = null;
+    playBtn.textContent = '▷ PREVIEW';
+    return;
+  }
+  if (!gifData) return;
+  const skip = parseInt(frameSkip.value);
+  const frames = gifData.frames.filter((_, i) => i % skip === 0);
+  let fi = 0;
+  playBtn.textContent = '■ STOP';
+  playInterval = setInterval(() => {
+    showFrame(fi * skip);
+    // highlight strip
+    const thumbs = previewStrip.querySelectorAll('canvas');
+    thumbs.forEach(c => c.classList.remove('active'));
+    if (thumbs[fi]) thumbs[fi].classList.add('active');
+    fi = (fi + 1) % frames.length;
+  }, gifData.frames[skip] ? gifData.frames[skip].delay : 100);
+});
+
+// ── Copy / Download ───────────────────────────────────────────────────────────
+copyBtn.addEventListener('click', () => {
+  navigator.clipboard.writeText(outputText.value).then(() => {
+    copyBtn.textContent = '✓ COPIED';
+    setTimeout(() => copyBtn.textContent = '⎘ COPY', 1500);
+  });
+});
+
+dlBtn.addEventListener('click', () => {
+  if (!outputLines) return;
+  const url = URL.createObjectURL(outputLines);
+  const a = document.createElement('a');
+  a.href = url;
+  a.download = 'scratch_video.txt';
+  a.click();
+  setTimeout(() => URL.revokeObjectURL(url), 5000);
+});
+</script>
+</body>
+</html>
