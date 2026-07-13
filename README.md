@@ -10,3 +10,7 @@ GIF　https://mikupekodev.github.io/DOOM-on-scratch/html/gif.htm
 3. できた.txtをダウンロードする
 4. 画像ならリスト``_VRAM``、GIFなら``GIF_ROM``にそのtxtをアップロードする (右クリック→読み込み→ファイル選択)
 5. できたら旗をクリック
+
+### <デモ>
+https://github.com/mikupekodev/DOOM-on-scratch/tree/main/demo
+ファイルダウンロードして使ってね
